@@ -2,10 +2,9 @@ import streamlit as st
 st.set_page_config(page_title="BIM a GIS 2D", layout="wide")
 
 import tempfile
-import os
 import folium
 from folium.plugins import FeatureGroupSubGroup
-from streamlit_folium import st_folium
+from streamlit_folium import st_folium  # mantiene compatibilidad si lo usas en otras partes
 import streamlit.components.v1 as components
 import json
 from pyproj import Transformer
@@ -18,9 +17,9 @@ from gemini_assistant import sugerir_epsg
 # --------------------------------------------------
 st.markdown("""
     <div style='display: flex; justify-content: flex-end;'>
-        <form><input type='submit' value='🔁 Reiniciar aplicación' 
-        style='padding: 0.5em 1em; border-radius: 6px; border: 1px solid #ccc; 
-        background-color: #f44336; color: white; font-weight: bold;'></form>
+        <form><input type='submit' value='🔁 Reiniciar aplicación'
+        style='padding:0.5em 1em;border-radius:6px;border:1px solid #ccc;
+        background-color:#f44336;color:white;font-weight:bold;'></form>
     </div>
 """, unsafe_allow_html=True)
 
@@ -31,21 +30,21 @@ st.markdown("""
 st.markdown("""
     <style>
     .stDownloadButton button {
-        background-color: #28a745;
-        color: white;
-        border-radius: 5px;
-        border: 1px solid #1e7e34;
-        padding: 0.5em 1em;
-        font-weight: bold;
+        background-color:#28a745;
+        color:white;
+        border-radius:5px;
+        border:1px solid #1e7e34;
+        padding:0.5em 1em;
+        font-weight:bold;
     }
     .stDownloadButton button:hover {
-        background-color: #218838;
-        border-color: #1c7430;
+        background-color:#218838;
+        border-color:#1c7430;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🏗️ BIM-GIS 2D Visualizer (Multi-IFC)")
+st.title("🏗️ BIM-GIS 2D Visualizer (Multi-IFC + Vista fluida)")
 
 
 # --------------------------------------------------
@@ -75,7 +74,7 @@ if "crs_input" not in st.session_state:
 
 
 # --------------------------------------------------
-# PASO 1: GEORREFERENCIACIÓN
+# PASO 1 – GEORREFERENCIACIÓN
 # --------------------------------------------------
 st.sidebar.header("🌍 Georreferenciación del proyecto")
 st.session_state.crs_input = st.sidebar.text_input(
@@ -107,7 +106,7 @@ except Exception as e:
 
 
 # --------------------------------------------------
-# PASO 2: CARGA DE IFC
+# PASO 2 – CARGA DE IFC
 # --------------------------------------------------
 if uploaded_files:
     for uploaded_file in uploaded_files:
@@ -120,7 +119,7 @@ if uploaded_files:
 
 
 # --------------------------------------------------
-# PASO 3: ENTIDADES Y PROPIEDADES
+# PASO 3 – ENTIDADES Y PROPIEDADES
 # --------------------------------------------------
 if st.session_state.ifc_models:
     entity_types = set()
@@ -195,7 +194,7 @@ if st.session_state.available_prop_keys:
 
 
 # --------------------------------------------------
-# PASO 4: MAPA CON CONMUTADOR DE VISTA
+# PASO 4 – MAPA FLUIDO PROFESIONAL CON BOTÓN DE CAMBIO DE VISTA
 # --------------------------------------------------
 if st.session_state.geojson_data:
     try:
@@ -207,32 +206,24 @@ if st.session_state.geojson_data:
         st.error(f"No se pudo determinar el centro del mapa: {e}")
         st.stop()
 
-    st.subheader("🗺️ Modo de visualización del mapa")
-    vista = st.radio(
-        "Selecciona tipo de fondo:",
-        ["Vista normal", "Vista satelital"],
-        horizontal=True,
-        key="vista_mapa"
+    m = folium.Map(
+        location=[lat, lon],
+        zoom_start=18,
+        max_zoom=30,
+        control_scale=True,
+        prefer_canvas=True
     )
 
-    # Crear mapa base
-    m = folium.Map(location=[lat, lon], zoom_start=18, max_zoom=24, control_scale=True)
-
-    # Fondo según vista
-    if vista == "Vista satelital":
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri",
-            name="🛰️ Satélite (Esri)",
-            overlay=False,
-            control=False
-        ).add_to(m)
-    else:
-        folium.TileLayer(
-            "OpenStreetMap",
-            name="🗺️ Calles",
-            control=False
-        ).add_to(m)
+    # Añadir ambas capas base
+    normal_tiles = folium.TileLayer("OpenStreetMap", name="🗺️ Calles", control=False)
+    sat_tiles = folium.TileLayer(
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri World Imagery",
+        name="🛰️ Satélite (Esri)",
+        control=False
+    )
+    normal_tiles.add_to(m)
+    sat_tiles.add_to(m)
 
     # Agrupar entidades por archivo
     features_by_file = {}
@@ -241,7 +232,6 @@ if st.session_state.geojson_data:
         features_by_file.setdefault(src, []).append(feature)
 
     base_group = folium.FeatureGroup(name="📦 Entidades IFC", show=True).add_to(m)
-
     color_palette = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
         "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
@@ -251,7 +241,6 @@ if st.session_state.geojson_data:
         color = color_palette[i % len(color_palette)]
         layer = FeatureGroupSubGroup(base_group, name=f"📁 {src}")
         m.add_child(layer)
-
         for feat in feats:
             folium.GeoJson(
                 feat,
@@ -265,10 +254,55 @@ if st.session_state.geojson_data:
                 highlight_function=lambda x: {"weight": 3, "fillColor": "#FFFF00"}
             ).add_to(layer)
 
-    # Render mapa en Streamlit
-    st_folium(m, use_container_width=True, height=800)
+    folium.LayerControl(collapsed=False, position="topright").add_to(m)
 
-    # Descargar GeoJSON combinado
+    # --- Botón flotante HTML/JS para alternar vista ---
+    toggle_js = """
+        <script>
+        let current = 'normal';
+        function toggleTiles(){
+            const osm = document.querySelectorAll('img.leaflet-tile[src*="tile.openstreetmap.org"]');
+            const sat = document.querySelectorAll('img.leaflet-tile[src*="arcgisonline.com"]');
+            if(current === 'normal'){
+                osm.forEach(t=>t.style.display='none');
+                sat.forEach(t=>t.style.display='block');
+                current = 'sat';
+                document.getElementById('toggle-btn').innerText = '🗺️ Vista Calles';
+            }else{
+                sat.forEach(t=>t.style.display='none');
+                osm.forEach(t=>t.style.display='block');
+                current = 'normal';
+                document.getElementById('toggle-btn').innerText = '🛰️ Vista Satelital';
+            }
+        }
+        </script>
+        <style>
+            #toggle-btn{
+                position:absolute;
+                top:10px;
+                left:10px;
+                z-index:9999;
+                background-color:rgba(255,255,255,0.9);
+                border:1px solid #ccc;
+                border-radius:6px;
+                padding:6px 12px;
+                font-weight:bold;
+                cursor:pointer;
+                box-shadow:0 2px 4px rgba(0,0,0,0.3);
+            }
+            #toggle-btn:hover{background-color:#e8e8e8;}
+        </style>
+        <button id="toggle-btn" onclick="toggleTiles()">🛰️ Vista Satelital</button>
+    """
+
+    # Guardar mapa temporal con el script añadido
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".html") as tmp_map:
+        m.save(tmp_map.name)
+        html_data = open(tmp_map.name, "r", encoding="utf-8").read()
+        html_data = html_data.replace("</body>", toggle_js + "</body>")
+        components.html(html_data, height=800, scrolling=False)
+
+    # Descarga del GeoJSON
     st.download_button(
         "📅 Descargar GeoJSON combinado",
         data=json.dumps(st.session_state.geojson_data, indent=2),
